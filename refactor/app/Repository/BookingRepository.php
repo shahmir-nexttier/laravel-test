@@ -1482,7 +1482,7 @@ class BookingRepository extends BaseRepository
         return $response;
     }
 
-    public function cancelJobAjax($data, $user)
+    public function cancelJob($data, $user)
     {
         $response = array();
         /*@todo
@@ -1657,7 +1657,7 @@ class BookingRepository extends BaseRepository
     }
 
 
-    public function customerNotCall($post_data)
+    public function handleCustomerNotCall($post_data)
     {
         $completeddate = date('Y-m-d H:i:s');
         $jobid = $post_data["job_id"];
@@ -1718,13 +1718,13 @@ class BookingRepository extends BaseRepository
                 $allJobs->where('will_expire_at', '>=', $requestdata['will_expire_at']);
             }
             if (isset($requestdata['customer_email']) && count($requestdata['customer_email']) && $requestdata['customer_email'] != '') {
-                $users = DB::table('users')->whereIn('email', $requestdata['customer_email'])->get();
+                $users = User::whereIn('email', $requestdata['customer_email'])->get();
                 if ($users) {
                     $allJobs->whereIn('user_id', collect($users)->pluck('id')->all());
                 }
             }
             if (isset($requestdata['translator_email']) && count($requestdata['translator_email'])) {
-                $users = DB::table('users')->whereIn('email', $requestdata['translator_email'])->get();
+                $users = User::whereIn('email', $requestdata['translator_email'])->get();
                 if ($users) {
                     $allJobIDs = DB::table('translator_job_rel')->whereNull('cancel_at')->whereIn('user_id', collect($users)->pluck('id')->all())->lists('job_id');
                     $allJobs->whereIn('id', $allJobIDs);
@@ -1838,7 +1838,7 @@ class BookingRepository extends BaseRepository
                 $allJobs->whereIn('job_type', $requestdata['job_type']);
             }
             if (isset($requestdata['customer_email']) && $requestdata['customer_email'] != '') {
-                $user = DB::table('users')->where('email', $requestdata['customer_email'])->first();
+                $user = User::where('email', $requestdata['customer_email'])->first();
                 if ($user) {
                     $allJobs->where('user_id', '=', $user->id);
                 }
@@ -1875,6 +1875,16 @@ class BookingRepository extends BaseRepository
         return $allJobs;
     }
 
+    public function getJobWithRelations($jobId)
+    {
+        return $this->model->with('translatorJobRel.user')->find($jobId);
+    }
+    public function storeJob(User $user, array $data)
+    {
+        $response = $this->store($user, $data);
+        return $response;
+    }
+
     public function alerts()
     {
         $jobs = Job::all();
@@ -1903,16 +1913,15 @@ class BookingRepository extends BaseRepository
 
         $languages = Language::where('active', '1')->orderBy('language')->get();
         $requestdata = Request::all();
-        $all_customers = DB::table('users')->where('user_type', '1')->lists('email');
-        $all_translators = DB::table('users')->where('user_type', '2')->lists('email');
+        $all_customers = User::where('user_type', '1')->lists('email');
+        $all_translators = User::where('user_type', '2')->lists('email');
 
         $cuser = Auth::user();
         $consumer_type = TeHelper::getUsermeta($cuser->id, 'consumer_type');
 
 
         if ($cuser && $cuser->is('superadmin')) {
-            $allJobs = DB::table('jobs')
-                ->join('languages', 'jobs.from_language_id', '=', 'languages.id')->whereIn('jobs.id', $jobId);
+            $allJobs = Job::join('languages', 'jobs.from_language_id', '=', 'languages.id')->whereIn('jobs.id', $jobId);
             if (isset($requestdata['lang']) && $requestdata['lang'] != '') {
                 $allJobs->whereIn('jobs.from_language_id', $requestdata['lang'])
                     ->where('jobs.ignore', 0);
@@ -1924,14 +1933,14 @@ class BookingRepository extends BaseRepository
                 /*$allJobs->where('jobs.status', '=', $requestdata['status']);*/
             }
             if (isset($requestdata['customer_email']) && $requestdata['customer_email'] != '') {
-                $user = DB::table('users')->where('email', $requestdata['customer_email'])->first();
+                $user = User::where('email', $requestdata['customer_email'])->first();
                 if ($user) {
                     $allJobs->where('jobs.user_id', '=', $user->id)
                         ->where('jobs.ignore', 0);
                 }
             }
             if (isset($requestdata['translator_email']) && $requestdata['translator_email'] != '') {
-                $user = DB::table('users')->where('email', $requestdata['translator_email'])->first();
+                $user = User::where('email', $requestdata['translator_email'])->first();
                 if ($user) {
                     $allJobIDs = DB::table('translator_job_rel')->where('user_id', $user->id)->lists('job_id');
                     $allJobs->whereIn('jobs.id', $allJobIDs)
@@ -1990,16 +1999,15 @@ class BookingRepository extends BaseRepository
     {
         $languages = Language::where('active', '1')->orderBy('language')->get();
         $requestdata = Request::all();
-        $all_customers = DB::table('users')->where('user_type', '1')->lists('email');
-        $all_translators = DB::table('users')->where('user_type', '2')->lists('email');
+        $all_customers = User::where('user_type', '1')->lists('email');
+        $all_translators = User::where('user_type', '2')->lists('email');
 
         $cuser = Auth::user();
         $consumer_type = TeHelper::getUsermeta($cuser->id, 'consumer_type');
 
 
         if ($cuser && ($cuser->is('superadmin') || $cuser->is('admin'))) {
-            $allJobs = DB::table('jobs')
-                ->join('languages', 'jobs.from_language_id', '=', 'languages.id')
+            $allJobs = Job::join('languages', 'jobs.from_language_id', '=', 'languages.id')
                 ->where('jobs.ignore_expired', 0);
             if (isset($requestdata['lang']) && $requestdata['lang'] != '') {
                 $allJobs->whereIn('jobs.from_language_id', $requestdata['lang'])
@@ -2016,7 +2024,7 @@ class BookingRepository extends BaseRepository
                 /*$allJobs->where('jobs.status', '=', $requestdata['status']);*/
             }
             if (isset($requestdata['customer_email']) && $requestdata['customer_email'] != '') {
-                $user = DB::table('users')->where('email', $requestdata['customer_email'])->first();
+                $user = User::where('email', $requestdata['customer_email'])->first();
                 if ($user) {
                     $allJobs->where('jobs.user_id', '=', $user->id)
                         ->where('jobs.status', 'pending')
@@ -2025,7 +2033,7 @@ class BookingRepository extends BaseRepository
                 }
             }
             if (isset($requestdata['translator_email']) && $requestdata['translator_email'] != '') {
-                $user = DB::table('users')->where('email', $requestdata['translator_email'])->first();
+                $user = User::where('email', $requestdata['translator_email'])->first();
                 if ($user) {
                     $allJobIDs = DB::table('translator_job_rel')->where('user_id', $user->id)->lists('job_id');
                     $allJobs->whereIn('jobs.id', $allJobIDs)
